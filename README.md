@@ -116,6 +116,8 @@ npm start
 
 Open [the local preview](http://127.0.0.1:8080). There is no `npm install` step; the library is included. Use `PORT=8081 npm start` if port 8080 is busy, and Ctrl+C to stop the server.
 
+The preview server only serves the gallery, scenes, UI, vendor library and docs media. It listens on localhost, refuses path traversal and hidden paths (including `.git`), and does not expose the wallpaper installer or other project files.
+
 - Click a scene to drop food.
 - Move the pointer through a scene to interact.
 - In Betta, drag to look around the betta and scroll to zoom. Clicking still drops food.

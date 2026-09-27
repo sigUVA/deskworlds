@@ -56,18 +56,44 @@ final class SceneHandler: NSObject, WKURLSchemeHandler {
     "json": "application/json",
     "jpg": "image/jpeg",
     "png": "image/png",
+    "bin": "application/octet-stream",
+    "svg": "image/svg+xml",
   ]
+  private static let blockedSegments: Set<String> = [".", "..", "tests", "node_modules"]
 
   init(root: URL, page: String) {
     self.root = root.standardizedFileURL
     self.page = page
   }
 
+  /// Resolve a request path under root, refusing traversal, blocked folders and escapes.
+  private func file(for requestPath: String) -> URL? {
+    let raw = requestPath.isEmpty || requestPath == "/" ? page : requestPath
+    let relative = raw.hasPrefix("/") ? String(raw.dropFirst()) : raw
+    let parts = relative.split(separator: "/").map(String.init)
+    guard !parts.isEmpty,
+      parts.allSatisfy({
+        !$0.isEmpty && !Self.blockedSegments.contains($0) && !$0.hasPrefix(".")
+      })
+    else { return nil }
+    let candidate = parts.reduce(root) { $0.appendingPathComponent($1) }.standardizedFileURL
+    let rootPath = root.path.hasSuffix("/") ? root.path : root.path + "/"
+    guard candidate.path.hasPrefix(rootPath) else { return nil }
+    // Reject a symlink whose target leaves the bundle copy of the scenes.
+    if let values = try? candidate.resourceValues(forKeys: [.isSymbolicLinkKey]),
+      values.isSymbolicLink == true
+    {
+      let resolved = candidate.resolvingSymlinksInPath()
+      guard resolved.path.hasPrefix(rootPath) else { return nil }
+      return resolved
+    }
+    return candidate
+  }
+
   func webView(_ webView: WKWebView, start task: WKURLSchemeTask) {
-    guard let url = task.request.url else { return }
-    let path = url.path == "" || url.path == "/" ? page : url.path
-    let file = root.appendingPathComponent(path).standardizedFileURL
-    guard file.path.hasPrefix(root.path + "/"), let data = try? Data(contentsOf: file) else {
+    guard let url = task.request.url, let file = file(for: url.path),
+      let data = try? Data(contentsOf: file)
+    else {
       task.didFailWithError(
         NSError(domain: NSURLErrorDomain, code: NSURLErrorFileDoesNotExist))
       return
@@ -269,6 +295,21 @@ final class Wallpaper: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     NSLog("deskworlds: the scene did not load: \(error.localizedDescription)")
   }
 
+  /// The wallpaper only loads its own private scheme. Block http(s), file, and any
+  /// other navigation so a compromised scene cannot reach the network or disk.
+  func webView(
+    _ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
+    decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+  ) {
+    guard let url = navigationAction.request.url,
+      url.scheme == sceneScheme, url.host == sceneHost
+    else {
+      decisionHandler(.cancel)
+      return
+    }
+    decisionHandler(.allow)
+  }
+
   /// What the page thinks it is doing, for the log.
   func probe() {
     view.evaluateJavaScript(
@@ -393,7 +434,8 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
       CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
     }
 
-    // `kill -USR1` writes what the first screen is showing to /tmp/deskworlds.png.
+    // `kill -USR1` writes what the first screen is showing under ~/Library/Caches.
+    // A path under the world-writable /tmp would be open to symlink games.
     signal(SIGUSR1, SIG_IGN)
     snapshots = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .main)
     snapshots?.setEventHandler { [weak self] in self?.snapshot() }
@@ -403,10 +445,14 @@ final class Controller: NSObject, NSApplicationDelegate, NSMenuDelegate {
   /// Draws for a moment even if the desktop is covered, then saves the frame.
   private func snapshot() {
     guard let first = screens.first else { return }
+    let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first!
+      .appendingPathComponent("Deskworlds", isDirectory: true)
+    try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let file = folder.appendingPathComponent("snapshot.png")
     for screen in screens { screen.setRate(60) }
     DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
       first.probe()
-      first.snapshot(to: URL(fileURLWithPath: "/tmp/deskworlds.png")) {
+      first.snapshot(to: file) {
         self?.applyRate()
       }
     }

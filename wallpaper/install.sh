@@ -55,7 +55,7 @@ cp -R "$project/vendor" "$project/ui" "$app/Contents/Resources/scene/"
 rm -rf "$app"/Contents/Resources/scene/scenes/*/tests
 codesign --force --sign - "$app" >/dev/null 2>&1 || true
 
-mkdir -p "$(dirname "$agent")"
+mkdir -p "$(dirname "$agent")" "$HOME/Library/Logs/Deskworlds"
 cat >"$agent" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -77,7 +77,7 @@ cat >"$agent" <<PLIST
 	<key>ProcessType</key>
 	<string>Interactive</string>
 	<key>StandardErrorPath</key>
-	<string>/tmp/deskworlds.log</string>
+	<string>$HOME/Library/Logs/Deskworlds/agent.log</string>
 </dict>
 </plist>
 PLIST
