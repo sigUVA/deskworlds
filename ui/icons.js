@@ -7,9 +7,20 @@ const paths = {
 };
 
 export function setActionIcon(button, icon, label, shortcut) {
-  if (!button) return;
+  if (!button || !paths[icon]) return;
   if (button.dataset.icon !== icon) {
-    button.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${paths[icon]}</svg>`;
+    button.replaceChildren();
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('fill', 'none');
+    svg.setAttribute('stroke', 'currentColor');
+    svg.setAttribute('stroke-width', '1.75');
+    svg.setAttribute('stroke-linecap', 'round');
+    svg.setAttribute('stroke-linejoin', 'round');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('focusable', 'false');
+    svg.innerHTML = paths[icon];
+    button.append(svg);
     button.dataset.icon = icon;
     button.classList.add('icon-button');
   }
